@@ -1,0 +1,14 @@
+{
+  "name": "order-system",
+  "private": true,
+  "workspaces": [
+    "apps/*",
+    "libs/*"
+  ],
+  "scripts": {
+    "dev:gateway": "pnpm --filter api-gateway dev",
+    "dev:order": "pnpm --filter order-service dev",
+    "dev:inventory": "pnpm --filter inventory-service dev",
+    "dev:payment": "pnpm --filter payment-service dev"
+  }
+}
