@@ -39,6 +39,10 @@ export class OrderService {
             return confirmed;
 
         } catch (error) {
+            await this.releaseStock(order.id).catch(() => {
+                // If release also fails, log it — don't throw
+                console.log(`Could not release stock for order ${order.id}`);
+            });
             // Something failed — mark order as FAILED
             await this.prisma.order.update({
                 where: { id: order.id },
@@ -48,6 +52,11 @@ export class OrderService {
             console.log(`Order ${order.id} FAILED: ${error.message}`);
             throw new HttpException(error.message, HttpStatus.BAD_REQUEST);
         }
+    }
+    private async releaseStock(orderId: string) {
+        await fetch(`http://localhost:3002/inventory/release/${orderId}`, {
+            method: 'DELETE',
+        });
     }
 
     private async reserveStock(orderId: string, productId: string, quantity: number) {

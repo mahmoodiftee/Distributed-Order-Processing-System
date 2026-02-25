@@ -18,3 +18,11 @@
 - made order.module.ts for organizing the code
 - made app.module.ts for importing order.module.ts
 - made main.ts for running the app
+
+What Inventory Service needs to do
+
+Own a list of products and their stock levels
+Expose a POST /inventory/reserve endpoint
+Check if enough stock exists
+Deduct it atomically (no overselling)
+Return success or failure to Order Service
