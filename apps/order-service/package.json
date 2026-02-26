@@ -6,14 +6,15 @@
     "build": "tsc"
   },
   "dependencies": {
-    "@nest/microservices": "^4.5.4",
+    "@nestjs/microservices": "^10.0.0",
     "@nestjs/common": "^10.0.0",
     "@nestjs/core": "^10.0.0",
     "@nestjs/platform-express": "^10.0.0",
     "@prisma/client": "^5.0.0",
     "kafkajs": "^2.2.4",
     "reflect-metadata": "^0.1.13",
-    "rxjs": "^7.8.0"
+    "rxjs": "^7.8.0",
+    "@order-system/contracts": "workspace:*"
   },
   "devDependencies": {
     "@types/node": "^20.0.0",

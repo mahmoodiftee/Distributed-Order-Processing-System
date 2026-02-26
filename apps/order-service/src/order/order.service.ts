@@ -1,13 +1,25 @@
-import { Injectable, HttpException, HttpStatus } from '@nestjs/common';
+import { Injectable, HttpException, HttpStatus, OnModuleInit } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { CreateOrderDto } from './dto/create-order.dto';
+import { Kafka, Producer } from 'kafkajs';
+import { TOPICS, OrderCreatedEvent } from '@order-system/contracts';
 
 @Injectable()
-export class OrderService {
-    constructor(private prisma: PrismaService) { }
+export class OrderService implements OnModuleInit {
+    private producer: Producer;
+
+    constructor(private prisma: PrismaService) {
+        const kafka = new Kafka({ brokers: ['localhost:9092'] });
+        this.producer = kafka.producer();
+    }
+
+    async onModuleInit() {
+        await this.producer.connect();
+        console.log('Order Service producer connected');
+    }
 
     async createOrder(dto: CreateOrderDto) {
-        // Step 1: Save order as PENDING
+        // Save order as PENDING immediately
         const order = await this.prisma.order.create({
             data: {
                 customerId: dto.customerId,
@@ -18,75 +30,71 @@ export class OrderService {
             },
         });
 
-        console.log(`Order ${order.id} created with status PENDING`);
+        console.log(`Order ${order.id} created — emitting ORDER_CREATED`);
 
-        try {
-            // Step 2: Reserve stock in Inventory Service
-            await this.reserveStock(order.id, dto.productId, dto.quantity);
-            console.log(`Stock reserved for order ${order.id}`);
+        // Emit event and walk away — no waiting
+        const event: OrderCreatedEvent = {
+            orderId: order.id,
+            customerId: dto.customerId,
+            productId: dto.productId,
+            quantity: dto.quantity,
+            totalAmount: dto.totalAmount,
+        };
 
-            // Step 3: Charge payment in Payment Service
-            await this.chargePayment(order.id, dto.customerId, dto.totalAmount);
-            console.log(`Payment charged for order ${order.id}`);
-
-            // Step 4: Mark order as CONFIRMED
-            const confirmed = await this.prisma.order.update({
-                where: { id: order.id },
-                data: { status: 'CONFIRMED' },
-            });
-
-            console.log(`Order ${order.id} CONFIRMED`);
-            return confirmed;
-
-        } catch (error) {
-            await this.releaseStock(order.id).catch(() => {
-                // If release also fails, log it — don't throw
-                console.log(`Could not release stock for order ${order.id}`);
-            });
-            // Something failed — mark order as FAILED
-            await this.prisma.order.update({
-                where: { id: order.id },
-                data: { status: 'FAILED' },
-            });
-
-            console.log(`Order ${order.id} FAILED: ${error.message}`);
-            throw new HttpException(error.message, HttpStatus.BAD_REQUEST);
-        }
-    }
-    private async releaseStock(orderId: string) {
-        await fetch(`http://localhost:3002/inventory/release/${orderId}`, {
-            method: 'DELETE',
-        });
-    }
-
-    private async reserveStock(orderId: string, productId: string, quantity: number) {
-        const response = await fetch('http://localhost:3002/inventory/reserve', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ orderId, productId, quantity }),
+        await this.producer.send({
+            topic: TOPICS.ORDER_CREATED,
+            messages: [
+                {
+                    key: order.id,        // using orderId as key keeps related messages in same partition
+                    value: JSON.stringify(event),
+                },
+            ],
         });
 
-        if (!response.ok) {
-            const error = await response.json();
-            throw new Error(error.message || 'Stock reservation failed');
-        }
-
-        return response.json();
+        // Return immediately — processing happens async
+        return {
+            orderId: order.id,
+            status: 'PENDING',
+            message: 'Order received and being processed',
+        };
     }
 
-    private async chargePayment(orderId: string, customerId: string, amount: number) {
-        const response = await fetch('http://localhost:3003/payment/charge', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ orderId, customerId, amount }),
+    // Called when we hear back that order is confirmed or failed
+    async handleOrderConfirmed(orderId: string, eventId: string) {
+        if (await this.isProcessed(eventId)) return;
+
+        await this.prisma.order.update({
+            where: { id: orderId },
+            data: { status: 'CONFIRMED' },
         });
 
-        if (!response.ok) {
-            const error = await response.json();
-            throw new Error(error.message || 'Payment failed');
-        }
+        await this.markProcessed(eventId, TOPICS.ORDER_CONFIRMED);
+        console.log(`Order ${orderId} CONFIRMED`);
+    }
 
-        return response.json();
+    async handleOrderFailed(orderId: string, reason: string, eventId: string) {
+        if (await this.isProcessed(eventId)) return;
+
+        await this.prisma.order.update({
+            where: { id: orderId },
+            data: { status: 'FAILED' },
+        });
+
+        await this.markProcessed(eventId, TOPICS.ORDER_FAILED);
+        console.log(`Order ${orderId} FAILED: ${reason}`);
+    }
+
+    private async isProcessed(eventId: string): Promise<boolean> {
+        const existing = await this.prisma.processedEvent.findUnique({
+            where: { eventId },
+        });
+        return !!existing;
+    }
+
+    private async markProcessed(eventId: string, topic: string) {
+        await this.prisma.processedEvent.create({
+            data: { eventId, topic },
+        });
     }
 
     async getOrder(id: string) {

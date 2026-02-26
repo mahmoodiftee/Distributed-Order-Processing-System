@@ -18,8 +18,8 @@ model Payment {
 }
 
 model ProcessedEvent {
-  id        String @id default(uuid())
-  eventId   String @unique
+  id        String   @id @default(uuid())
+  eventId   String   @unique
   topic     String
   createdAt DateTime @default(now())
 }

@@ -19,7 +19,7 @@ model Order {
 }
 
 model ProcessedEvent {
-  id        String @id default(uuid())
+  id        String @id @default(uuid())
   eventId   String @unique
   topic     String
   createdAt DateTime @default(now())
