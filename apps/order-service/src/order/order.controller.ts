@@ -18,16 +18,22 @@ export class OrderController {
         return this.orderService.getOrder(id);
     }
 
-    // handleOrderConfirmed
-    @EventPattern(TOPICS.ORDER_CONFIRMED)
-    handleOrderConfirmed(@Payload() message: any) {
-        const { orderId, eventId } = JSON.parse(message.value);
-        return this.orderService.handleOrderConfirmed(orderId, eventId);
-    }
 
     @EventPattern(TOPICS.ORDER_FAILED)
     handleOrderFailed(@Payload() message: any) {
         const { orderId, reason, eventId } = JSON.parse(message.value);
         return this.orderService.handleOrderFailed(orderId, reason, eventId);
+    }
+
+    @EventPattern(TOPICS.PAYMENT_COMPLETED)
+    handlePaymentCompleted(@Payload() message: any) {
+        const { orderId, eventId } = JSON.parse(message.value);
+        return this.orderService.handlePaymentCompleted(orderId, eventId);
+    }
+
+    @EventPattern(TOPICS.PAYMENT_FAILED)
+    handlePaymentFailed(@Payload() message: any) {
+        const { orderId, reason, eventId } = JSON.parse(message.value);
+        return this.orderService.handlePaymentFailed(orderId, reason, eventId);
     }
 }

@@ -1,60 +1,109 @@
-import { Injectable, BadRequestException } from '@nestjs/common';
+import { Injectable, OnModuleInit } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
-import { ChargePaymentDto } from './dto/charge-payment.dto';
+import { Kafka, Producer } from 'kafkajs';
+import { TOPICS, StockReservedEvent } from '@order-system/contracts';
 
 @Injectable()
-export class PaymentService {
-    constructor(private prisma: PrismaService) { }
+export class PaymentService implements OnModuleInit {
+    private producer: Producer;
 
-    async charge(dto: ChargePaymentDto) {
-        // Idempotency check — never charge the same order twice
-        const existing = await this.prisma.payment.findUnique({
-            where: { orderId: dto.orderId },
-        });
+    constructor(private prisma: PrismaService) {
+        const kafka = new Kafka({ brokers: ['localhost:9092'] });
+        this.producer = kafka.producer();
+    }
 
-        if (existing) {
-            console.log(`Order ${dto.orderId} already charged — returning cached result`);
+    async onModuleInit() {
+        await this.producer.connect();
+        console.log('Payment Service producer connected');
+    }
 
-            if (existing.status === 'FAILED') {
-                throw new BadRequestException('Payment already failed for this order');
-            }
-
-            return existing;
+    async handleStockReserved(event: StockReservedEvent, eventId: string) {
+        if (await this.isProcessed(eventId)) {
+            console.log(`Event ${eventId} already processed — skipping`);
+            return;
         }
 
-        // Simulate real world — payments fail sometimes
-        // 30% failure rate so you can see both paths easily
-        const paymentFailed = Math.random() < 0.3;
+        console.log(`Processing STOCK_RESERVED for order ${event.orderId}`);
+
+        const paymentFailed = Math.random() < 0.5;
 
         if (paymentFailed) {
-            // Save the failed attempt — important, you still record it happened
             await this.prisma.payment.create({
                 data: {
-                    orderId: dto.orderId,
-                    customerId: dto.customerId,
-                    amount: dto.amount,
+                    orderId: event.orderId,
+                    customerId: 'unknown',
+                    amount: 0,
                     status: 'FAILED',
                 },
             });
 
-            console.log(`Payment FAILED for order ${dto.orderId}`);
-            throw new BadRequestException('Payment declined by bank');
+            await this.markProcessed(eventId, TOPICS.STOCK_RESERVED);
+
+            await this.producer.send({
+                topic: TOPICS.PAYMENT_FAILED,
+                messages: [{
+                    key: event.orderId,
+                    value: JSON.stringify({
+                        orderId: event.orderId,
+                        reason: 'Payment declined by bank',
+                        eventId: `${event.orderId}-payment-failed`,
+                    }),
+                }],
+            });
+
+            await this.producer.send({
+                topic: TOPICS.ORDER_FAILED,
+                messages: [{
+                    key: event.orderId,
+                    value: JSON.stringify({
+                        orderId: event.orderId,
+                        reason: 'Payment declined by bank',
+                        eventId: `${event.orderId}-order-failed`,
+                    }),
+                }],
+            });
+
+            console.log(`Payment FAILED for order ${event.orderId}`);
+            return;
         }
 
-        // Payment succeeded
-        const payment = await this.prisma.payment.create({
+        await this.prisma.payment.create({
             data: {
-                orderId: dto.orderId,
-                customerId: dto.customerId,
-                amount: dto.amount,
+                orderId: event.orderId,
+                customerId: 'unknown',
+                amount: 0,
                 status: 'SUCCESS',
             },
         });
 
-        console.log(`Payment SUCCESS for order ${dto.orderId}`);
-        return payment;
+        await this.markProcessed(eventId, TOPICS.STOCK_RESERVED);
+
+        await this.producer.send({
+            topic: TOPICS.PAYMENT_COMPLETED,
+            messages: [{
+                key: event.orderId,
+                value: JSON.stringify({
+                    orderId: event.orderId,
+                    eventId: `${event.orderId}-payment-completed`,
+                }),
+            }],
+        });
+
+        console.log(`Payment SUCCESS for order ${event.orderId} — emitting PAYMENT_COMPLETED`);
     }
 
+    private async isProcessed(eventId: string): Promise<boolean> {
+        const existing = await this.prisma.processedEvent.findUnique({
+            where: { eventId },
+        });
+        return !!existing;
+    }
+
+    private async markProcessed(eventId: string, topic: string) {
+        await this.prisma.processedEvent.create({
+            data: { eventId, topic },
+        });
+    }
     async getPayment(orderId: string) {
         return this.prisma.payment.findUnique({ where: { orderId } });
     }

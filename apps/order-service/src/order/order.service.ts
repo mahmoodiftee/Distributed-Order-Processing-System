@@ -59,19 +59,6 @@ export class OrderService implements OnModuleInit {
         };
     }
 
-    // Called when we hear back that order is confirmed or failed
-    async handleOrderConfirmed(orderId: string, eventId: string) {
-        if (await this.isProcessed(eventId)) return;
-
-        await this.prisma.order.update({
-            where: { id: orderId },
-            data: { status: 'CONFIRMED' },
-        });
-
-        await this.markProcessed(eventId, TOPICS.ORDER_CONFIRMED);
-        console.log(`Order ${orderId} CONFIRMED`);
-    }
-
     async handleOrderFailed(orderId: string, reason: string, eventId: string) {
         if (await this.isProcessed(eventId)) return;
 
@@ -81,6 +68,30 @@ export class OrderService implements OnModuleInit {
         });
 
         await this.markProcessed(eventId, TOPICS.ORDER_FAILED);
+        console.log(`Order ${orderId} FAILED: ${reason}`);
+    }
+
+    async handlePaymentCompleted(orderId: string, eventId: string) {
+        if (await this.isProcessed(eventId)) return;
+
+        await this.prisma.order.update({
+            where: { id: orderId },
+            data: { status: 'CONFIRMED' },
+        });
+
+        await this.markProcessed(eventId, TOPICS.PAYMENT_COMPLETED);
+        console.log(`Order ${orderId} CONFIRMED (via Payment Completed)`);
+    }
+
+    async handlePaymentFailed(orderId: string, reason: string, eventId: string) {
+        if (await this.isProcessed(eventId)) return;
+
+        await this.prisma.order.update({
+            where: { id: orderId },
+            data: { status: 'FAILED' },
+        });
+
+        await this.markProcessed(eventId, TOPICS.PAYMENT_FAILED);
         console.log(`Order ${orderId} FAILED: ${reason}`);
     }
 

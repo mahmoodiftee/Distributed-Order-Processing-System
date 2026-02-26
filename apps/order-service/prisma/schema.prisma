@@ -28,5 +28,6 @@ model ProcessedEvent {
 enum OrderStatus {
   PENDING
   CONFIRMED
+  PAID
   FAILED
 }
