@@ -1,88 +1,140 @@
-import { BadRequestException, Injectable } from "@nestjs/common";
-import { ReserveStockDto } from "./dto/reserve-stock.dto";
-import { PrismaService } from "../prisma/prisma.service";
+import { Injectable, OnModuleInit } from '@nestjs/common';
+import { PrismaService } from '../prisma/prisma.service';
+import { Kafka, Producer } from 'kafkajs';
+import { TOPICS, OrderCreatedEvent, StockReservedEvent, StockFailedEvent } from '@order-system/contracts';
 
 @Injectable()
-export class InventoryService {
-    constructor(private readonly prisma: PrismaService) { }
+export class InventoryService implements OnModuleInit {
+    private producer: Producer;
 
-    async reserveStock(dto: ReserveStockDto) {
-        const existingStock = await this.prisma.stockReservation.findUnique({
-            where: {
-                orderId: dto.orderId,
-            }
-        });
-
-        if (existingStock) {
-            console.log(`Order ${dto.orderId} already reserved — returning cached result`);
-            return { success: true, message: 'Already reserved' };
-        }
-
-        // Use a transaction with row-level locking
-        // This prevents two requests from reading the same stock
-        // value simultaneously and both thinking there's enough
-
-        return await this.prisma.$transaction(async (tx) => {
-            const product = await tx.product.findUnique({
-                where: { id: dto.productId },
-            });
-
-            if (!product) {
-                throw new BadRequestException(`Product ${dto.productId} not found`);
-            }
-
-            if (product.stock < dto.quantity) {
-                throw new BadRequestException(
-                    `Insufficient stock. Requested: ${dto.quantity}, Available: ${product.stock}`
-                );
-            }
-            // Deduct the stock
-            await tx.product.update({
-                where: { id: dto.productId },
-                data: { stock: product.stock - dto.quantity }
-            })
-
-            // Record the reservation
-            await tx.stockReservation.create({
-                data: {
-                    orderId: dto.orderId,
-                    productId: dto.productId,
-                    quantity: dto.quantity,
-                }
-            })
-            console.log(`Reserved ${dto.quantity} units of ${dto.productId} for order ${dto.orderId}`);
-
-            return { success: true, message: 'Stock reserved' };
-        })
+    constructor(private prisma: PrismaService) {
+        const kafka = new Kafka({ brokers: ['localhost:9092'] });
+        this.producer = kafka.producer();
     }
 
-    async releaseStock(orderId: string) {
-        // Find the reservation
-        const reservation = await this.prisma.stockReservation.findUnique({
-            where: {
-                orderId,
-            }
-        })
+    async onModuleInit() {
+        await this.producer.connect();
+        console.log('Inventory Service producer connected');
+    }
 
-        if (!reservation) {
-            console.log(`No reservation found for order ${orderId} — nothing to release`);
+    async handleOrderCreated(event: OrderCreatedEvent, eventId: string) {
+        // kafka event Idempotency check
+        if (await this.isProcessed(eventId)) {
+            console.log(`Event ${eventId} already processed — skipping`);
             return;
         }
-        // Give the stock back and delete the reservation
-        await this.prisma.$transaction(async (tx) => {
-            await tx.product.update({
-                where: { id: reservation.productId },
-                data: { stock: { increment: reservation.quantity } },
+
+        console.log(`Processing ORDER_CREATED for order ${event.orderId}`);
+        /*
+        -check product exist or not
+        -check stock is available or not
+        -deduct the stock
+        -record the reservation
+         */
+        try {
+            await this.prisma.$transaction(async (tx) => {
+                const product = await tx.product.findUnique({
+                    where: { id: event.productId },
+                });
+
+                if (!product) throw new Error(`Product ${event.productId} not found`);
+                if (product.stock < event.quantity) {
+                    throw new Error(`Insufficient stock. Requested: ${event.quantity}, Available: ${product.stock}`);
+                }
+
+                await tx.product.update({
+                    where: { id: event.productId },
+                    data: { stock: product.stock - event.quantity },
+                });
+
+                await tx.stockReservation.create({
+                    data: {
+                        orderId: event.orderId,
+                        productId: event.productId,
+                        quantity: event.quantity,
+                    },
+                });
             });
 
-            await tx.stockReservation.delete({
-                where: { orderId },
+            // Mark event as processed
+            await this.markProcessed(eventId, TOPICS.ORDER_CREATED);
+
+            // Emit success event
+            const stockReservedEvent: StockReservedEvent = {
+                orderId: event.orderId,
+                productId: event.productId,
+                quantity: event.quantity,
+            };
+
+            await this.producer.send({
+                topic: TOPICS.STOCK_RESERVED,
+                messages: [{
+                    key: event.orderId,
+                    value: JSON.stringify({ ...stockReservedEvent, eventId: `${event.orderId}-stock-reserved` }),
+                }],
             });
-        });
-        console.log(`Released stock for order ${orderId}`);
+
+            console.log(`Stock reserved for order ${event.orderId} — emitting STOCK_RESERVED`);
+
+        } catch (error) {
+
+            await this.markProcessed(eventId, TOPICS.ORDER_CREATED);
+
+            // Emit failure
+            const stockFailedEvent: StockFailedEvent = {
+                orderId: event.orderId,
+                reason: error.message,
+            };
+
+            await this.producer.send({
+                topic: TOPICS.STOCK_FAILED,
+                messages: [{
+                    key: event.orderId,
+                    value: JSON.stringify({ ...stockFailedEvent, eventId: `${event.orderId}-stock-failed` }),
+                }],
+            });
+
+            console.log(`Stock reservation FAILED for order ${event.orderId}: ${error.message}`);
+        }
     }
 
-    async getProduct(id: string) {
-        return this.prisma.product.findUnique({ where: { id } });
+    async handlePaymentFailed(orderId: string, eventId: string) {
+        if (await this.isProcessed(eventId)) return;
+
+        const reservation = await this.prisma.stockReservation.findUnique({
+            where: { orderId },
+        });
+        /*
+        -find reservation
+        -add the stock
+        -delete the reservation
+         */
+        if (reservation) {
+            await this.prisma.$transaction(async (tx) => {
+                await tx.product.update({
+                    where: { id: reservation.productId },
+                    data: { stock: { increment: reservation.quantity } },
+                });
+
+                await tx.stockReservation.delete({ where: { orderId } });
+            });
+
+            console.log(`Stock released for order ${orderId}`);
+        }
+
+        await this.markProcessed(eventId, TOPICS.PAYMENT_FAILED);
+    }
+
+    private async isProcessed(eventId: string): Promise<boolean> {
+        const existing = await this.prisma.processedEvent.findUnique({
+            where: { eventId },
+        });
+        return !!existing;
+    }
+
+    private async markProcessed(eventId: string, topic: string) {
+        await this.prisma.processedEvent.create({
+            data: { eventId, topic },
+        });
     }
 }
