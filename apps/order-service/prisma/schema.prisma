@@ -18,6 +18,13 @@ model Order {
   updatedAt  DateTime @updatedAt
 }
 
+model ProcessedEvent {
+  id        String @id default(uuid())
+  eventId   String @unique
+  topic     String
+  createdAt DateTime @default(now())
+}
+
 enum OrderStatus {
   PENDING
   CONFIRMED

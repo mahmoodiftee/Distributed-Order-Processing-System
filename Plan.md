@@ -26,3 +26,12 @@ Expose a POST /inventory/reserve endpoint
 Check if enough stock exists
 Deduct it atomically (no overselling)
 Return success or failure to Order Service
+
+
+## Kafka Implementation Steps
+
+1. created events.ts and topics.ts in libs/contracts which will act as contract between transaction
+2. created processedEvent table on order, inventory, payment db to keep track of processed events
+3. ran npx prisma migrate dev --name add_processed_events on all services
+4. Rewrite Order Service to send events to kafka instead of calling inventory and payment service directly
+5. 
