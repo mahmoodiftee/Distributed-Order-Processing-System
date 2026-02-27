@@ -39,13 +39,14 @@ export class OrderService implements OnModuleInit {
             productId: dto.productId,
             quantity: dto.quantity,
             totalAmount: dto.totalAmount,
+            eventId: `order-created-${order.id}`,
         };
 
         await this.producer.send({
             topic: TOPICS.ORDER_CREATED,
             messages: [
                 {
-                    key: order.id,        // using orderId as key keeps related messages in same partition
+                    key: order.id,
                     value: JSON.stringify(event),
                 },
             ],

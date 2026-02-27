@@ -64,13 +64,14 @@ export class InventoryService implements OnModuleInit {
                 orderId: event.orderId,
                 productId: event.productId,
                 quantity: event.quantity,
+                eventId: `${event.orderId}-stock-reserved`,
             };
 
             await this.producer.send({
                 topic: TOPICS.STOCK_RESERVED,
                 messages: [{
                     key: event.orderId,
-                    value: JSON.stringify({ ...stockReservedEvent, eventId: `${event.orderId}-stock-reserved` }),
+                    value: JSON.stringify(stockReservedEvent),
                 }],
             });
 
@@ -84,13 +85,14 @@ export class InventoryService implements OnModuleInit {
             const stockFailedEvent: StockFailedEvent = {
                 orderId: event.orderId,
                 reason: error.message,
+                eventId: `${event.orderId}-stock-failed`,
             };
 
             await this.producer.send({
                 topic: TOPICS.STOCK_FAILED,
                 messages: [{
                     key: event.orderId,
-                    value: JSON.stringify({ ...stockFailedEvent, eventId: `${event.orderId}-stock-failed` }),
+                    value: JSON.stringify(stockFailedEvent),
                 }],
             });
 

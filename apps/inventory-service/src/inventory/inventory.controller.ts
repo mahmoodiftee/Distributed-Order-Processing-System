@@ -13,14 +13,13 @@ export class InventoryController {
     }
 
     @EventPattern(TOPICS.ORDER_CREATED)
-    handleOrderCreated(@Payload() message: any) {
-        const data = JSON.parse(message.value);
-        return this.inventoryService.handleOrderCreated(data, message.offset);
+    handleOrderCreated(@Payload() data: OrderCreatedEvent) {
+        return this.inventoryService.handleOrderCreated(data, data.eventId);
     }
 
     @EventPattern(TOPICS.PAYMENT_FAILED)
-    handlePaymentFailed(@Payload() message: any) {
-        const { orderId, eventId } = JSON.parse(message.value);
+    handlePaymentFailed(@Payload() data: any) {
+        const { orderId, eventId } = data;
         return this.inventoryService.handlePaymentFailed(orderId, eventId);
     }
 }

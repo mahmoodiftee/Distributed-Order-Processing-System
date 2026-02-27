@@ -17,6 +17,7 @@ async function bootstrap() {
         },
     })
 
+    await app.startAllMicroservices();
     await app.listen(3002);
     console.log('Inventory Service running on port 3002');
 }

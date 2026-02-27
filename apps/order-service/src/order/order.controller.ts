@@ -20,20 +20,20 @@ export class OrderController {
 
 
     @EventPattern(TOPICS.ORDER_FAILED)
-    handleOrderFailed(@Payload() message: any) {
-        const { orderId, reason, eventId } = JSON.parse(message.value);
+    handleOrderFailed(@Payload() data: any) {
+        const { orderId, reason, eventId } = data;
         return this.orderService.handleOrderFailed(orderId, reason, eventId);
     }
 
     @EventPattern(TOPICS.PAYMENT_COMPLETED)
-    handlePaymentCompleted(@Payload() message: any) {
-        const { orderId, eventId } = JSON.parse(message.value);
+    handlePaymentCompleted(@Payload() data: any) {
+        const { orderId, eventId } = data;
         return this.orderService.handlePaymentCompleted(orderId, eventId);
     }
 
     @EventPattern(TOPICS.PAYMENT_FAILED)
-    handlePaymentFailed(@Payload() message: any) {
-        const { orderId, reason, eventId } = JSON.parse(message.value);
+    handlePaymentFailed(@Payload() data: any) {
+        const { orderId, reason, eventId } = data;
         return this.orderService.handlePaymentFailed(orderId, reason, eventId);
     }
 }

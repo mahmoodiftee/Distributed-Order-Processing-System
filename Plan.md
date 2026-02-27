@@ -3,6 +3,7 @@
 1. first ran pnpm init to initialize the project for microservices
 2. created apps/folders and libs/folders
 3. started working on order-service
+
 - first pnpm init then rewrote the package.json then pnpm i
 - created tsconfig.json and rewrote it to make it suitable for the project
 - then ran npx prisma init
@@ -27,11 +28,12 @@ Check if enough stock exists
 Deduct it atomically (no overselling)
 Return success or failure to Order Service
 
-
 ## Kafka Implementation Steps
 
 1. created events.ts and topics.ts in libs/contracts which will act as contract between transaction
 2. created processedEvent table on order, inventory, payment db to keep track of processed events
 3. ran npx prisma migrate dev --name add_processed_events on all services
 4. Rewrite Order Service to send events to kafka instead of calling inventory and payment service directly
-5. 
+5.
+
+for pid in $(netstat -ano | grep -E ":3001|:3002|:3003" | grep LISTENING | awk '{print $5}' | sort -u); do taskkill //F //PID $pid; done

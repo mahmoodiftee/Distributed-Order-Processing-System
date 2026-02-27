@@ -14,8 +14,7 @@ export class PaymentController {
     }
 
     @EventPattern(TOPICS.STOCK_RESERVED)
-    async handleStockReserved(@Payload() message: any) {
-        const data = JSON.parse(message.value);
-        return this.paymentService.handleStockReserved(data, message.offset)
+    async handleStockReserved(@Payload() data: StockReservedEvent) {
+        return this.paymentService.handleStockReserved(data, data.eventId)
     }
 }

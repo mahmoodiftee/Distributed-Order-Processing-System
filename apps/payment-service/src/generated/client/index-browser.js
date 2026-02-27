@@ -131,6 +131,13 @@ exports.Prisma.PaymentScalarFieldEnum = {
   createdAt: 'createdAt'
 };
 
+exports.Prisma.ProcessedEventScalarFieldEnum = {
+  id: 'id',
+  eventId: 'eventId',
+  topic: 'topic',
+  createdAt: 'createdAt'
+};
+
 exports.Prisma.SortOrder = {
   asc: 'asc',
   desc: 'desc'
@@ -146,7 +153,8 @@ exports.PaymentStatus = exports.$Enums.PaymentStatus = {
 };
 
 exports.Prisma.ModelName = {
-  Payment: 'Payment'
+  Payment: 'Payment',
+  ProcessedEvent: 'ProcessedEvent'
 };
 
 /**
