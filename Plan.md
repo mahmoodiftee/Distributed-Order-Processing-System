@@ -34,6 +34,21 @@ Return success or failure to Order Service
 2. created processedEvent table on order, inventory, payment db to keep track of processed events
 3. ran npx prisma migrate dev --name add_processed_events on all services
 4. Rewrite Order Service to send events to kafka instead of calling inventory and payment service directly
-5.
+5. 
+
+Choreography = everyone improvises and hopes it works out (Phase 1)
+Orchestration = one conductor coordinates everyone (Phase 2)
+
+
 
 for pid in $(netstat -ano | grep -E ":3001|:3002|:3003" | grep LISTENING | awk '{print $5}' | sort -u); do taskkill //F //PID $pid; done
+
+
+
+
+Production-Level Understanding
+State Management: LLMs are stateless. To have a "conversation," you must store the message history in Firestore and send the relevant history back with every new request.
+
+Cost & Latency: High-end models (GPT-4o, Claude 3.5 Sonnet) are slow and pricey. For simple tasks (summarizing a short note), use a smaller/faster model (Gemini Flash, GPT-4o-mini).
+
+Secret Management: Never put your API keys in the React code. They must stay in Firebase Functions environment variables.
