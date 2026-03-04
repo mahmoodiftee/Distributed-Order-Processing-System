@@ -1,7 +1,14 @@
 import { Injectable, OnModuleInit } from '@nestjs/common';
 import { Kafka, Producer, Consumer } from 'kafkajs';
 import { PrismaService } from './prisma/prisma.service';
-import { TOPICS, OrderCreatedEvent, StockReservedEvent, StockFailedEvent, PaymentCompletedEvent, PaymentFailedEvent } from '@order-system/contracts';
+import {
+    TOPICS,
+    OrderCreatedEvent,
+    StockReservedEvent,
+    StockFailedEvent,
+    PaymentCompletedEvent,
+    PaymentFailedEvent,
+} from '@order-system/contracts';
 
 @Injectable()
 export class SagaService implements OnModuleInit {
@@ -21,8 +28,9 @@ export class SagaService implements OnModuleInit {
                 TOPICS.STOCK_RESERVED,
                 TOPICS.STOCK_FAILED,
                 TOPICS.PAYMENT_COMPLETED,
-                TOPICS.PAYMENT_FAILED
-            ], fromBeginning: true
+                TOPICS.PAYMENT_FAILED,
+            ],
+            fromBeginning: true,
         });
 
         await this.consumer.run({
@@ -32,16 +40,18 @@ export class SagaService implements OnModuleInit {
             },
         });
 
-        console.log('Saga Orchestrator started and listening to events');
+        console.log('Saga Orchestrator started');
 
         await this.recoverSagas();
+        setInterval(() => this.recoverSagas(), 10_000);
     }
 
     private async handleEvent(topic: string, data: any) {
-        const { eventId, orderId } = data;
+        const { eventId } = data;
 
-        // Idempotency check
-        const processed = await this.prisma.processedEvent.findUnique({ where: { eventId } });
+        const processed = await this.prisma.processedEvent.findUnique({
+            where: { eventId },
+        });
         if (processed) return;
 
         switch (topic) {
@@ -65,97 +75,238 @@ export class SagaService implements OnModuleInit {
         await this.prisma.processedEvent.create({ data: { eventId, topic } });
     }
 
+    // ── Step 1: Order received → persist saga → command Inventory ──────────
+
     private async handleOrderCreated(data: OrderCreatedEvent) {
-        console.log(`Saga STARTED for Order: ${data.orderId}`);
+        console.log(`Saga STARTED for order ${data.orderId}`);
 
         await this.prisma.saga.upsert({
             where: { orderId: data.orderId },
-            update: { status: 'STARTED' },
+            update: {},
             create: {
                 orderId: data.orderId,
                 status: 'STARTED',
+                currentStep: 'RESERVING_STOCK',
                 productId: data.productId,
                 quantity: data.quantity,
                 totalAmount: data.totalAmount,
-            }
+            },
         });
 
-        // In a real system, we might emit a "RESERVE_STOCK" command here.
-        // For now, the Inventory Service already listens to ORDER_CREATED.
-        // The Saga Orchestrator acts as a monitor/coordinator.
+        // Saga commands Inventory to reserve stock
+        // Inventory does NOT listen to ORDER_CREATED anymore
+        await this.producer.send({
+            topic: TOPICS.RESERVE_STOCK,
+            messages: [{
+                key: data.orderId,
+                value: JSON.stringify({
+                    orderId: data.orderId,
+                    productId: data.productId,
+                    quantity: data.quantity,
+                    totalAmount: data.totalAmount,
+                    eventId: `reserve-stock-${data.orderId}`,
+                }),
+            }],
+        });
+
+        console.log(`Saga commanded Inventory to RESERVE_STOCK for order ${data.orderId}`);
     }
+
+    // ── Step 2: Stock reserved → persist step → command Payment ───────────
 
     private async handleStockReserved(data: StockReservedEvent) {
-        console.log(`Stock RESERVED for Order: ${data.orderId}. Moving to Payment.`);
+        console.log(`Stock RESERVED for order ${data.orderId} — commanding Payment`);
 
+        // Persist step transition before acting
         await this.prisma.saga.update({
             where: { orderId: data.orderId },
-            data: { status: 'STOCK_RESERVED' }
+            data: { status: 'STOCK_RESERVED', currentStep: 'CHARGING_PAYMENT' },
         });
+
+        // Saga commands Payment to process payment
+        // Payment does NOT listen to STOCK_RESERVED anymore
+        await this.producer.send({
+            topic: TOPICS.PROCESS_PAYMENT,
+            messages: [{
+                key: data.orderId,
+                value: JSON.stringify({
+                    orderId: data.orderId,
+                    eventId: `process-payment-${data.orderId}`,
+                }),
+            }],
+        });
+
+        console.log(`Saga commanded Payment to PROCESS_PAYMENT for order ${data.orderId}`);
     }
 
+    // ── Step 3a: Stock failed → no compensation needed → fail order ────────
+
     private async handleStockFailed(data: StockFailedEvent) {
-        console.log(`Stock FAILED for Order: ${data.orderId}. Reason: ${data.reason}`);
+        console.log(`Stock FAILED for order ${data.orderId}: ${data.reason}`);
 
         await this.prisma.saga.update({
             where: { orderId: data.orderId },
-            data: { status: 'FAILED', reason: data.reason }
+            data: { status: 'FAILED', currentStep: 'DONE', reason: data.reason },
         });
 
         await this.producer.send({
             topic: TOPICS.ORDER_FAILED,
-            messages: [{ key: data.orderId, value: JSON.stringify({ orderId: data.orderId, reason: data.reason, eventId: `saga-failed-${data.orderId}` }) }]
+            messages: [{
+                key: data.orderId,
+                value: JSON.stringify({
+                    orderId: data.orderId,
+                    reason: data.reason,
+                    eventId: `order-failed-${data.orderId}`,
+                }),
+            }],
         });
     }
 
+    // ── Step 3b: Payment completed → saga done → confirm order ─────────────
+
     private async handlePaymentCompleted(data: PaymentCompletedEvent) {
-        console.log(`Payment COMPLETED for Order: ${data.orderId}. Saga SUCCESS.`);
+        console.log(`Payment COMPLETED for order ${data.orderId} — saga SUCCESS`);
 
         await this.prisma.saga.update({
             where: { orderId: data.orderId },
-            data: { status: 'COMPLETED' }
+            data: { status: 'COMPLETED', currentStep: 'DONE' },
         });
 
         await this.producer.send({
             topic: TOPICS.ORDER_CONFIRMED,
-            messages: [{ key: data.orderId, value: JSON.stringify({ orderId: data.orderId, eventId: `saga-success-${data.orderId}` }) }]
+            messages: [{
+                key: data.orderId,
+                value: JSON.stringify({
+                    orderId: data.orderId,
+                    eventId: `order-confirmed-${data.orderId}`,
+                }),
+            }],
         });
     }
+
+    // ── Step 3c: Payment failed → persist compensating → release stock ─────
 
     private async handlePaymentFailed(data: PaymentFailedEvent) {
-        console.log(`Payment FAILED for Order: ${data.orderId}. Reason: ${data.reason}. Compensating...`);
+        console.log(`Payment FAILED for order ${data.orderId} — compensating`);
 
+        // Persist COMPENSATING before acting
         await this.prisma.saga.update({
             where: { orderId: data.orderId },
-            data: { status: 'FAILED', reason: data.reason }
+            data: {
+                status: 'COMPENSATING',
+                currentStep: 'RELEASING_STOCK',
+                reason: data.reason,
+            },
         });
 
-        // Compensate: Notify Inventory to release stock, and Order to fail
-        await this.producer.send({
-            topic: TOPICS.ORDER_FAILED,
-            messages: [{ key: data.orderId, value: JSON.stringify({ orderId: data.orderId, reason: data.reason, eventId: `saga-compensation-${data.orderId}` }) }]
-        });
+        await this.compensate(data.orderId, data.reason);
     }
 
-    private async recoverSagas() {
-        const pendingSagas = await this.prisma.saga.findMany({
-            where: { status: { in: ['STARTED', 'STOCK_RESERVED'] } }
+    // ── Compensation ────────────────────────────────────────────────────────
+
+    private async compensate(orderId: string, reason: string) {
+        // Tell Inventory to release the reserved stock
+        await this.producer.send({
+            topic: TOPICS.PAYMENT_FAILED,
+            messages: [{
+                key: orderId,
+                value: JSON.stringify({
+                    orderId,
+                    reason,
+                    eventId: `release-stock-${orderId}`,
+                }),
+            }],
         });
 
-        if (pendingSagas.length === 0) return;
+        // Tell Order Service the order failed
+        await this.producer.send({
+            topic: TOPICS.ORDER_FAILED,
+            messages: [{
+                key: orderId,
+                value: JSON.stringify({
+                    orderId,
+                    reason,
+                    eventId: `order-failed-${orderId}`,
+                }),
+            }],
+        });
 
-        console.log(`[RECOVERY] Found ${pendingSagas.length} pending sagas. Resuming...`);
+        await this.prisma.saga.update({
+            where: { orderId },
+            data: { status: 'FAILED', currentStep: 'DONE' },
+        });
 
-        for (const saga of pendingSagas) {
-            console.log(`[RECOVERY] Resuming Saga for Order: ${saga.orderId} (Status: ${saga.status})`);
+        console.log(`Compensation complete for order ${orderId}`);
+    }
+
+    // ── Recovery on startup ─────────────────────────────────────────────────
+
+    private async recoverSagas() {
+        const stuck = await this.prisma.saga.findMany({
+            where: {
+                status: { in: ['STARTED', 'STOCK_RESERVED', 'COMPENSATING'] },
+                // Only touch sagas with no activity for over 30 seconds
+                // This prevents retrying sagas currently being processed
+                updatedAt: { lt: new Date(Date.now() - 30_000) },
+            },
+        });
+
+        if (stuck.length === 0) return;
+
+        console.log(`[RECOVERY] Found ${stuck.length} stuck saga(s)`);
+
+        for (const saga of stuck) {
+            console.log(`[RECOVERY] Order ${saga.orderId} stuck at: ${saga.status}`);
+
+            if (saga.status === 'STARTED') {
+                // Inventory never responded — retry the command
+                await this.producer.send({
+                    topic: TOPICS.RESERVE_STOCK,
+                    messages: [{
+                        key: saga.orderId,
+                        value: JSON.stringify({
+                            orderId: saga.orderId,
+                            productId: saga.productId,
+                            quantity: saga.quantity,
+                            totalAmount: saga.totalAmount,
+                            eventId: `reserve-stock-recovery-${saga.orderId}`,
+                        }),
+                    }],
+                });
+                console.log(`[RECOVERY] Retried RESERVE_STOCK for order ${saga.orderId}`);
+            }
 
             if (saga.status === 'STOCK_RESERVED') {
-                // In an orchestrated flow, we would re-trigger the command.
-                // Here we just log that we are picking up from where we left.
-                console.log(`[RECOVERY] Saga ${saga.orderId} was stuck in STOCK_RESERVED. Waiting for next event...`);
-            } else if (saga.status === 'STARTED') {
-                console.log(`[RECOVERY] Saga ${saga.orderId} was stuck in STARTED. Waiting for stock reservation...`);
+                // Payment never responded — retry the command
+                // Idempotency in payment service ensures no double charge
+                await this.producer.send({
+                    topic: TOPICS.PROCESS_PAYMENT,
+                    messages: [{
+                        key: saga.orderId,
+                        value: JSON.stringify({
+                            orderId: saga.orderId,
+                            eventId: `process-payment-recovery-${saga.orderId}`,
+                        }),
+                    }],
+                });
+                console.log(`[RECOVERY] Retried PROCESS_PAYMENT for order ${saga.orderId}`);
+            }
+
+            if (saga.status === 'COMPENSATING') {
+                // Was mid-compensation when crashed — finish it
+                await this.compensate(saga.orderId, saga.reason || 'Recovery compensation');
+                console.log(`[RECOVERY] Finished compensation for order ${saga.orderId}`);
             }
         }
     }
+
+    // Payment fails → handlePaymentFailed → compensate immediately
+    // Stock released → order marked FAILED
+    // Recovery never touches it — saga is already FAILED
+
+    // Payment service down → saga stuck at STOCK_RESERVED
+    // 30 seconds pass → recovery finds it
+    // Recovery retries PROCESS_PAYMENT
+    // Payment service back up → processes it → saga completes normally
+
 }

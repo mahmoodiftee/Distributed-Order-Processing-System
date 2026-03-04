@@ -1,4 +1,4 @@
-import { Injectable, HttpException, HttpStatus, OnModuleInit } from '@nestjs/common';
+import { Injectable, OnModuleInit } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { CreateOrderDto } from './dto/create-order.dto';
 import { Kafka, Producer } from 'kafkajs';
@@ -19,7 +19,6 @@ export class OrderService implements OnModuleInit {
     }
 
     async createOrder(dto: CreateOrderDto) {
-        // Save order as PENDING immediately
         const order = await this.prisma.order.create({
             data: {
                 customerId: dto.customerId,
@@ -32,7 +31,6 @@ export class OrderService implements OnModuleInit {
 
         console.log(`Order ${order.id} created — emitting ORDER_CREATED`);
 
-        // Emit event and walk away — no waiting
         const event: OrderCreatedEvent = {
             orderId: order.id,
             customerId: dto.customerId,
@@ -44,15 +42,9 @@ export class OrderService implements OnModuleInit {
 
         await this.producer.send({
             topic: TOPICS.ORDER_CREATED,
-            messages: [
-                {
-                    key: order.id,
-                    value: JSON.stringify(event),
-                },
-            ],
+            messages: [{ key: order.id, value: JSON.stringify(event) }],
         });
 
-        // Return immediately — processing happens async
         return {
             orderId: order.id,
             status: 'PENDING',
@@ -60,16 +52,27 @@ export class OrderService implements OnModuleInit {
         };
     }
 
+    // Only two outcomes now — Saga tells us confirmed or failed
+    async handleOrderConfirmed(orderId: string, eventId: string) {
+        if (await this.isProcessed(eventId)) return;
+
+        const order = await this.prisma.order.findUnique({ where: { id: orderId } });
+        if (!order) return;
+
+        await this.prisma.order.update({
+            where: { id: orderId },
+            data: { status: 'CONFIRMED' },
+        });
+
+        await this.markProcessed(eventId, TOPICS.ORDER_CONFIRMED);
+        console.log(`Order ${orderId} CONFIRMED`);
+    }
+
     async handleOrderFailed(orderId: string, reason: string, eventId: string) {
         if (await this.isProcessed(eventId)) return;
 
-        console.log(`Processing ORDER_FAILED for order ${orderId}`);
         const order = await this.prisma.order.findUnique({ where: { id: orderId } });
-        if (!order) {
-            console.warn(`Order ${orderId} not found. Skipping status update.`);
-            await this.markProcessed(eventId, TOPICS.ORDER_FAILED);
-            return;
-        }
+        if (!order) return;
 
         await this.prisma.order.update({
             where: { id: orderId },
@@ -77,44 +80,6 @@ export class OrderService implements OnModuleInit {
         });
 
         await this.markProcessed(eventId, TOPICS.ORDER_FAILED);
-        console.log(`Order ${orderId} FAILED: ${reason}`);
-    }
-
-    async handlePaymentCompleted(orderId: string, eventId: string) {
-        if (await this.isProcessed(eventId)) return;
-
-        const order = await this.prisma.order.findUnique({ where: { id: orderId } });
-        if (!order) {
-            console.warn(`Order ${orderId} not found. Skipping status update.`);
-            await this.markProcessed(eventId, TOPICS.PAYMENT_COMPLETED);
-            return;
-        }
-
-        await this.prisma.order.update({
-            where: { id: orderId },
-            data: { status: 'CONFIRMED' },
-        });
-
-        await this.markProcessed(eventId, TOPICS.PAYMENT_COMPLETED);
-        console.log(`Order ${orderId} CONFIRMED (via Payment Completed)`);
-    }
-
-    async handlePaymentFailed(orderId: string, reason: string, eventId: string) {
-        if (await this.isProcessed(eventId)) return;
-
-        const order = await this.prisma.order.findUnique({ where: { id: orderId } });
-        if (!order) {
-            console.warn(`Order ${orderId} not found. Skipping status update.`);
-            await this.markProcessed(eventId, TOPICS.PAYMENT_FAILED);
-            return;
-        }
-
-        await this.prisma.order.update({
-            where: { id: orderId },
-            data: { status: 'FAILED' },
-        });
-
-        await this.markProcessed(eventId, TOPICS.PAYMENT_FAILED);
         console.log(`Order ${orderId} FAILED: ${reason}`);
     }
 
@@ -126,12 +91,15 @@ export class OrderService implements OnModuleInit {
     }
 
     private async markProcessed(eventId: string, topic: string) {
-        await this.prisma.processedEvent.create({
-            data: { eventId, topic },
-        });
+        await this.prisma.processedEvent.create({ data: { eventId, topic } });
     }
 
     async getOrder(id: string) {
         return this.prisma.order.findUnique({ where: { id } });
     }
 }
+
+// Client → Order Service → ORDER_CREATED → Saga
+// Saga → RESERVE_STOCK → Inventory → STOCK_RESERVED → Saga
+// Saga → PROCESS_PAYMENT → Payment → PAYMENT_COMPLETED → Saga
+// Saga → ORDER_CONFIRMED → Order Service

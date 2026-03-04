@@ -12,6 +12,7 @@ model Saga {
   id          String   @id @default(uuid())
   orderId     String   @unique
   status      String // STARTED, STOCK_RESERVED, COMPLETED, FAILED
+  currentStep String   @default("RESERVING_STOCK") // RESERVING_STOCK, CHARGING_PAYMENT, etc.
   productId   String
   quantity    Int
   totalAmount Float

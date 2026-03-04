@@ -126,6 +126,7 @@ exports.Prisma.SagaScalarFieldEnum = {
   id: 'id',
   orderId: 'orderId',
   status: 'status',
+  currentStep: 'currentStep',
   productId: 'productId',
   quantity: 'quantity',
   totalAmount: 'totalAmount',

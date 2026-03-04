@@ -1,0 +1,2 @@
+-- AlterTable
+ALTER TABLE "Saga" ADD COLUMN     "currentStep" TEXT NOT NULL DEFAULT 'RESERVING_STOCK';

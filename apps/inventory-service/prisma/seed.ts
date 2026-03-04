@@ -1,4 +1,4 @@
-import { PrismaClient } from '@prisma/client';
+import { PrismaClient } from '../src/generated/client';
 
 const prisma = new PrismaClient();
 
@@ -9,6 +9,7 @@ async function main() {
             { id: 'product-2', name: 'Phone', stock: 25, price: 499.99 },
             { id: 'product-3', name: 'Headphones', stock: 0, price: 99.99 },
         ],
+        skipDuplicates: true,
     });
 
     console.log('Products seeded');

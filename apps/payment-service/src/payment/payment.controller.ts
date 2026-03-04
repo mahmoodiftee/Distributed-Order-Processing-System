@@ -1,8 +1,7 @@
-import { Body, Controller, Get, Param, Post } from "@nestjs/common";
-import { PaymentService } from "./payment.service";
-import { ChargePaymentDto } from "./dto/charge-payment.dto";
-import { EventPattern, Payload } from "@nestjs/microservices";
-import { StockReservedEvent, TOPICS } from "@order-system/contracts";
+import { Controller, Get, Param } from '@nestjs/common';
+import { EventPattern, Payload } from '@nestjs/microservices';
+import { PaymentService } from './payment.service';
+import { TOPICS } from '@order-system/contracts';
 
 @Controller('payment')
 export class PaymentController {
@@ -13,8 +12,9 @@ export class PaymentController {
         return this.paymentService.getPayment(orderId);
     }
 
-    @EventPattern(TOPICS.STOCK_RESERVED)
-    async handleStockReserved(@Payload() data: StockReservedEvent) {
-        return this.paymentService.handleStockReserved(data, data.eventId)
+    // Listens to PROCESS_PAYMENT command from Saga — NOT STOCK_RESERVED anymore
+    @EventPattern(TOPICS.PROCESS_PAYMENT)
+    handleProcessPayment(@Payload() data: any) {
+        return this.paymentService.handleProcessPayment(data, data.eventId);
     }
 }
