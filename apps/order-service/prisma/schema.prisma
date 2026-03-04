@@ -1,5 +1,6 @@
 generator client {
   provider = "prisma-client-js"
+  output   = "../src/generated/client"
 }
 
 datasource db {
@@ -18,8 +19,16 @@ model Order {
   updatedAt  DateTime @updatedAt
 }
 
+model ProcessedEvent {
+  id        String @id @default(uuid())
+  eventId   String @unique
+  topic     String
+  createdAt DateTime @default(now())
+}
+
 enum OrderStatus {
   PENDING
   CONFIRMED
+  PAID
   FAILED
 }

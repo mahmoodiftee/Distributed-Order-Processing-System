@@ -1,5 +1,6 @@
 generator client {
   provider = "prisma-client-js"
+  output   = "../src/generated/client"
 }
 
 datasource db {
@@ -21,5 +22,12 @@ model StockReservation {
   orderId   String   @unique
   productId String
   quantity  Int
+  createdAt DateTime @default(now())
+}
+
+model ProcessedEvent {
+  id        String   @id @default(uuid())
+  eventId   String   @unique
+  topic     String
   createdAt DateTime @default(now())
 }

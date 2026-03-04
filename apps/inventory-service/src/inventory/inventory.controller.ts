@@ -1,24 +1,25 @@
-import { Body, Controller, Delete, Get, Param, Post } from "@nestjs/common";
-import { InventoryService } from "./inventory.service";
-import { ReserveStockDto } from "./dto/reserve-stock.dto";
+import { Controller, Get, Param } from '@nestjs/common';
+import { EventPattern, Payload } from '@nestjs/microservices';
+import { InventoryService } from './inventory.service';
+import { TOPICS, OrderCreatedEvent } from '@order-system/contracts';
 
 @Controller('inventory')
 export class InventoryController {
-    constructor(private readonly inventoryService: InventoryService) { }
-
-    @Post('reserve')
-    reserveStock(@Body() dto: ReserveStockDto) {
-        return this.inventoryService.reserveStock(dto);
-    }
-
-    @Delete('release/:orderId')
-    releaseStock(@Param('orderId') orderId: string) {
-        return this.inventoryService.releaseStock(orderId);
-    }
+    constructor(private inventoryService: InventoryService) { }
 
     @Get('product/:id')
     getProduct(@Param('id') id: string) {
-        return this.inventoryService.getProduct(id);
+        return this.inventoryService['prisma'].product.findUnique({ where: { id } });
     }
 
+    @EventPattern(TOPICS.ORDER_CREATED)
+    handleOrderCreated(@Payload() data: OrderCreatedEvent) {
+        return this.inventoryService.handleOrderCreated(data, data.eventId);
+    }
+
+    @EventPattern(TOPICS.PAYMENT_FAILED)
+    handlePaymentFailed(@Payload() data: any) {
+        const { orderId, eventId } = data;
+        return this.inventoryService.handlePaymentFailed(orderId, eventId);
+    }
 }

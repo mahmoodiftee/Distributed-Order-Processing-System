@@ -6,6 +6,10 @@
     "emitDecoratorMetadata": true,
     "outDir": "./dist",
     "baseUrl": ".",
+    "paths": {
+      "@order-system/contracts": ["../../libs/contracts/src/index.ts"],
+      "@order-system/contracts/*": ["../../libs/contracts/src/*"]
+    },
     "strict": false
   },
   "include": ["src"]

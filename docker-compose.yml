@@ -8,7 +8,7 @@ services:
       POSTGRES_PASSWORD: postgres
       POSTGRES_DB: order_db
     ports:
-      - "5435:5432"
+      - "5434:5432"
     volumes:
       - order-db-data:/var/lib/postgresql/data
 
@@ -19,7 +19,7 @@ services:
       POSTGRES_PASSWORD: postgres
       POSTGRES_DB: inventory_db
     ports:
-      - "5433:5432"
+      - "5435:5432"
     volumes:
       - inventory-db-data:/var/lib/postgresql/data
 
@@ -30,11 +30,43 @@ services:
       POSTGRES_PASSWORD: postgres
       POSTGRES_DB: payment_db
     ports:
-      - "5434:5432"
+      - "5436:5432"
     volumes:
       - payment-db-data:/var/lib/postgresql/data
+
+  saga-db:
+    image: postgres:15
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: saga_db
+    ports:
+      - "5433:5432"
+    volumes:
+      - saga-db-data:/var/lib/postgresql/data
+
+  zookeeper:
+    image: confluentinc/cp-zookeeper:7.4.0
+    environment:
+      ZOOKEEPER_CLIENT_PORT: 2181
+    ports:
+      - "2181:2181"
+
+  kafka:
+    image: confluentinc/cp-kafka:7.4.0
+    depends_on:
+      - zookeeper
+    ports:
+      - "9092:9092"
+    environment:
+      KAFKA_BROKER_ID: 1
+      KAFKA_ZOOKEEPER_CONNECT: zookeeper:2181
+      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://localhost:9092
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+      KAFKA_AUTO_CREATE_TOPICS_ENABLE: "true"
 
 volumes:
   order-db-data:
   inventory-db-data:
   payment-db-data:
+  saga-db-data:

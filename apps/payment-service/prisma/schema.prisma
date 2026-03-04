@@ -1,5 +1,6 @@
 generator client {
   provider = "prisma-client-js"
+  output   = "../src/generated/client"
 }
 
 datasource db {
@@ -15,6 +16,13 @@ model Payment {
   amount     Float
   status     PaymentStatus
   createdAt  DateTime      @default(now())
+}
+
+model ProcessedEvent {
+  id        String   @id @default(uuid())
+  eventId   String   @unique
+  topic     String
+  createdAt DateTime @default(now())
 }
 
 enum PaymentStatus {
