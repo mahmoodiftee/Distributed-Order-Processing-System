@@ -1,7 +1,7 @@
 import { Injectable, OnModuleInit } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { Kafka, Producer } from 'kafkajs';
-import { TOPICS, OrderCreatedEvent, StockReservedEvent, StockFailedEvent } from '@order-system/contracts';
+import { TOPICS } from '@order-system/contracts';
 
 @Injectable()
 export class InventoryService implements OnModuleInit {
@@ -17,86 +17,77 @@ export class InventoryService implements OnModuleInit {
         console.log('Inventory Service producer connected');
     }
 
-    async handleOrderCreated(event: OrderCreatedEvent, eventId: string) {
-        // kafka event Idempotency check
+    // Renamed from handleOrderCreated — now only acts on Saga's command
+    async handleReserveStock(data: any, eventId: string) {
         if (await this.isProcessed(eventId)) {
             console.log(`Event ${eventId} already processed — skipping`);
             return;
         }
 
-        console.log(`Processing ORDER_CREATED for order ${event.orderId}`);
-        /*
-        -check product exist or not
-        -check stock is available or not
-        -deduct the stock
-        -record the reservation
-         */
+        console.log(`Inventory received RESERVE_STOCK command for order ${data.orderId}`);
+
         try {
             await this.prisma.$transaction(async (tx) => {
                 const product = await tx.product.findUnique({
-                    where: { id: event.productId },
+                    where: { id: data.productId },
                 });
 
-                if (!product) throw new Error(`Product ${event.productId} not found`);
-                if (product.stock < event.quantity) {
-                    throw new Error(`Insufficient stock. Requested: ${event.quantity}, Available: ${product.stock}`);
+                if (!product) throw new Error(`Product ${data.productId} not found`);
+                if (product.stock < data.quantity) {
+                    throw new Error(
+                        `Insufficient stock. Requested: ${data.quantity}, Available: ${product.stock}`,
+                    );
                 }
 
                 await tx.product.update({
-                    where: { id: event.productId },
-                    data: { stock: product.stock - event.quantity },
+                    where: { id: data.productId },
+                    data: { stock: product.stock - data.quantity },
                 });
 
                 await tx.stockReservation.create({
                     data: {
-                        orderId: event.orderId,
-                        productId: event.productId,
-                        quantity: event.quantity,
+                        orderId: data.orderId,
+                        productId: data.productId,
+                        quantity: data.quantity,
                     },
                 });
             });
 
-            // Mark event as processed
-            await this.markProcessed(eventId, TOPICS.ORDER_CREATED);
+            await this.markProcessed(eventId, TOPICS.RESERVE_STOCK);
 
-            // Emit success event
-            const stockReservedEvent: StockReservedEvent = {
-                orderId: event.orderId,
-                productId: event.productId,
-                quantity: event.quantity,
-                eventId: `${event.orderId}-stock-reserved`,
-            };
-
+            // Report result back to Saga
             await this.producer.send({
                 topic: TOPICS.STOCK_RESERVED,
                 messages: [{
-                    key: event.orderId,
-                    value: JSON.stringify(stockReservedEvent),
+                    key: data.orderId,
+                    value: JSON.stringify({
+                        orderId: data.orderId,
+                        productId: data.productId,
+                        quantity: data.quantity,
+                        eventId: `stock-reserved-${data.orderId}`,
+                    }),
                 }],
             });
 
-            console.log(`Stock reserved for order ${event.orderId} — emitting STOCK_RESERVED`);
+            console.log(`Stock reserved for order ${data.orderId} — emitting STOCK_RESERVED`);
 
         } catch (error) {
+            await this.markProcessed(eventId, TOPICS.RESERVE_STOCK);
 
-            await this.markProcessed(eventId, TOPICS.ORDER_CREATED);
-
-            // Emit failure
-            const stockFailedEvent: StockFailedEvent = {
-                orderId: event.orderId,
-                reason: error.message,
-                eventId: `${event.orderId}-stock-failed`,
-            };
-
+            // Report failure back to Saga
             await this.producer.send({
                 topic: TOPICS.STOCK_FAILED,
                 messages: [{
-                    key: event.orderId,
-                    value: JSON.stringify(stockFailedEvent),
+                    key: data.orderId,
+                    value: JSON.stringify({
+                        orderId: data.orderId,
+                        reason: error.message,
+                        eventId: `stock-failed-${data.orderId}`,
+                    }),
                 }],
             });
 
-            console.log(`Stock reservation FAILED for order ${event.orderId}: ${error.message}`);
+            console.log(`Stock reservation FAILED for order ${data.orderId}: ${error.message}`);
         }
     }
 
@@ -106,18 +97,13 @@ export class InventoryService implements OnModuleInit {
         const reservation = await this.prisma.stockReservation.findUnique({
             where: { orderId },
         });
-        /*
-        -find reservation
-        -add the stock
-        -delete the reservation
-         */
+
         if (reservation) {
             await this.prisma.$transaction(async (tx) => {
                 await tx.product.update({
                     where: { id: reservation.productId },
                     data: { stock: { increment: reservation.quantity } },
                 });
-
                 await tx.stockReservation.delete({ where: { orderId } });
             });
 
@@ -135,8 +121,6 @@ export class InventoryService implements OnModuleInit {
     }
 
     private async markProcessed(eventId: string, topic: string) {
-        await this.prisma.processedEvent.create({
-            data: { eventId, topic },
-        });
+        await this.prisma.processedEvent.create({ data: { eventId, topic } });
     }
 }

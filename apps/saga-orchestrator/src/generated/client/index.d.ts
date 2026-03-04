@@ -955,6 +955,7 @@ export namespace Prisma {
     id: string | null
     orderId: string | null
     status: string | null
+    currentStep: string | null
     productId: string | null
     quantity: number | null
     totalAmount: number | null
@@ -968,6 +969,7 @@ export namespace Prisma {
     id: string | null
     orderId: string | null
     status: string | null
+    currentStep: string | null
     productId: string | null
     quantity: number | null
     totalAmount: number | null
@@ -981,6 +983,7 @@ export namespace Prisma {
     id: number
     orderId: number
     status: number
+    currentStep: number
     productId: number
     quantity: number
     totalAmount: number
@@ -1006,6 +1009,7 @@ export namespace Prisma {
     id?: true
     orderId?: true
     status?: true
+    currentStep?: true
     productId?: true
     quantity?: true
     totalAmount?: true
@@ -1019,6 +1023,7 @@ export namespace Prisma {
     id?: true
     orderId?: true
     status?: true
+    currentStep?: true
     productId?: true
     quantity?: true
     totalAmount?: true
@@ -1032,6 +1037,7 @@ export namespace Prisma {
     id?: true
     orderId?: true
     status?: true
+    currentStep?: true
     productId?: true
     quantity?: true
     totalAmount?: true
@@ -1132,6 +1138,7 @@ export namespace Prisma {
     id: string
     orderId: string
     status: string
+    currentStep: string
     productId: string
     quantity: number
     totalAmount: number
@@ -1164,6 +1171,7 @@ export namespace Prisma {
     id?: boolean
     orderId?: boolean
     status?: boolean
+    currentStep?: boolean
     productId?: boolean
     quantity?: boolean
     totalAmount?: boolean
@@ -1177,6 +1185,7 @@ export namespace Prisma {
     id?: boolean
     orderId?: boolean
     status?: boolean
+    currentStep?: boolean
     productId?: boolean
     quantity?: boolean
     totalAmount?: boolean
@@ -1190,6 +1199,7 @@ export namespace Prisma {
     id?: boolean
     orderId?: boolean
     status?: boolean
+    currentStep?: boolean
     productId?: boolean
     quantity?: boolean
     totalAmount?: boolean
@@ -1207,6 +1217,7 @@ export namespace Prisma {
       id: string
       orderId: string
       status: string
+      currentStep: string
       productId: string
       quantity: number
       totalAmount: number
@@ -1610,6 +1621,7 @@ export namespace Prisma {
     readonly id: FieldRef<"Saga", 'String'>
     readonly orderId: FieldRef<"Saga", 'String'>
     readonly status: FieldRef<"Saga", 'String'>
+    readonly currentStep: FieldRef<"Saga", 'String'>
     readonly productId: FieldRef<"Saga", 'String'>
     readonly quantity: FieldRef<"Saga", 'Int'>
     readonly totalAmount: FieldRef<"Saga", 'Float'>
@@ -2789,6 +2801,7 @@ export namespace Prisma {
     id: 'id',
     orderId: 'orderId',
     status: 'status',
+    currentStep: 'currentStep',
     productId: 'productId',
     quantity: 'quantity',
     totalAmount: 'totalAmount',
@@ -2906,6 +2919,7 @@ export namespace Prisma {
     id?: StringFilter<"Saga"> | string
     orderId?: StringFilter<"Saga"> | string
     status?: StringFilter<"Saga"> | string
+    currentStep?: StringFilter<"Saga"> | string
     productId?: StringFilter<"Saga"> | string
     quantity?: IntFilter<"Saga"> | number
     totalAmount?: FloatFilter<"Saga"> | number
@@ -2919,6 +2933,7 @@ export namespace Prisma {
     id?: SortOrder
     orderId?: SortOrder
     status?: SortOrder
+    currentStep?: SortOrder
     productId?: SortOrder
     quantity?: SortOrder
     totalAmount?: SortOrder
@@ -2935,6 +2950,7 @@ export namespace Prisma {
     OR?: SagaWhereInput[]
     NOT?: SagaWhereInput | SagaWhereInput[]
     status?: StringFilter<"Saga"> | string
+    currentStep?: StringFilter<"Saga"> | string
     productId?: StringFilter<"Saga"> | string
     quantity?: IntFilter<"Saga"> | number
     totalAmount?: FloatFilter<"Saga"> | number
@@ -2948,6 +2964,7 @@ export namespace Prisma {
     id?: SortOrder
     orderId?: SortOrder
     status?: SortOrder
+    currentStep?: SortOrder
     productId?: SortOrder
     quantity?: SortOrder
     totalAmount?: SortOrder
@@ -2969,6 +2986,7 @@ export namespace Prisma {
     id?: StringWithAggregatesFilter<"Saga"> | string
     orderId?: StringWithAggregatesFilter<"Saga"> | string
     status?: StringWithAggregatesFilter<"Saga"> | string
+    currentStep?: StringWithAggregatesFilter<"Saga"> | string
     productId?: StringWithAggregatesFilter<"Saga"> | string
     quantity?: IntWithAggregatesFilter<"Saga"> | number
     totalAmount?: FloatWithAggregatesFilter<"Saga"> | number
@@ -3029,6 +3047,7 @@ export namespace Prisma {
     id?: string
     orderId: string
     status: string
+    currentStep?: string
     productId: string
     quantity: number
     totalAmount: number
@@ -3042,6 +3061,7 @@ export namespace Prisma {
     id?: string
     orderId: string
     status: string
+    currentStep?: string
     productId: string
     quantity: number
     totalAmount: number
@@ -3055,6 +3075,7 @@ export namespace Prisma {
     id?: StringFieldUpdateOperationsInput | string
     orderId?: StringFieldUpdateOperationsInput | string
     status?: StringFieldUpdateOperationsInput | string
+    currentStep?: StringFieldUpdateOperationsInput | string
     productId?: StringFieldUpdateOperationsInput | string
     quantity?: IntFieldUpdateOperationsInput | number
     totalAmount?: FloatFieldUpdateOperationsInput | number
@@ -3068,6 +3089,7 @@ export namespace Prisma {
     id?: StringFieldUpdateOperationsInput | string
     orderId?: StringFieldUpdateOperationsInput | string
     status?: StringFieldUpdateOperationsInput | string
+    currentStep?: StringFieldUpdateOperationsInput | string
     productId?: StringFieldUpdateOperationsInput | string
     quantity?: IntFieldUpdateOperationsInput | number
     totalAmount?: FloatFieldUpdateOperationsInput | number
@@ -3081,6 +3103,7 @@ export namespace Prisma {
     id?: string
     orderId: string
     status: string
+    currentStep?: string
     productId: string
     quantity: number
     totalAmount: number
@@ -3094,6 +3117,7 @@ export namespace Prisma {
     id?: StringFieldUpdateOperationsInput | string
     orderId?: StringFieldUpdateOperationsInput | string
     status?: StringFieldUpdateOperationsInput | string
+    currentStep?: StringFieldUpdateOperationsInput | string
     productId?: StringFieldUpdateOperationsInput | string
     quantity?: IntFieldUpdateOperationsInput | number
     totalAmount?: FloatFieldUpdateOperationsInput | number
@@ -3107,6 +3131,7 @@ export namespace Prisma {
     id?: StringFieldUpdateOperationsInput | string
     orderId?: StringFieldUpdateOperationsInput | string
     status?: StringFieldUpdateOperationsInput | string
+    currentStep?: StringFieldUpdateOperationsInput | string
     productId?: StringFieldUpdateOperationsInput | string
     quantity?: IntFieldUpdateOperationsInput | number
     totalAmount?: FloatFieldUpdateOperationsInput | number
@@ -3237,6 +3262,7 @@ export namespace Prisma {
     id?: SortOrder
     orderId?: SortOrder
     status?: SortOrder
+    currentStep?: SortOrder
     productId?: SortOrder
     quantity?: SortOrder
     totalAmount?: SortOrder
@@ -3255,6 +3281,7 @@ export namespace Prisma {
     id?: SortOrder
     orderId?: SortOrder
     status?: SortOrder
+    currentStep?: SortOrder
     productId?: SortOrder
     quantity?: SortOrder
     totalAmount?: SortOrder
@@ -3268,6 +3295,7 @@ export namespace Prisma {
     id?: SortOrder
     orderId?: SortOrder
     status?: SortOrder
+    currentStep?: SortOrder
     productId?: SortOrder
     quantity?: SortOrder
     totalAmount?: SortOrder

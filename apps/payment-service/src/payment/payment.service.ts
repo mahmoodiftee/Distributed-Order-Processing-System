@@ -1,7 +1,7 @@
 import { Injectable, OnModuleInit } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { Kafka, Producer } from 'kafkajs';
-import { TOPICS, StockReservedEvent } from '@order-system/contracts';
+import { TOPICS } from '@order-system/contracts';
 
 @Injectable()
 export class PaymentService implements OnModuleInit {
@@ -17,79 +17,71 @@ export class PaymentService implements OnModuleInit {
         console.log('Payment Service producer connected');
     }
 
-    async handleStockReserved(event: StockReservedEvent, eventId: string) {
+    // Renamed from handleStockReserved — now only acts on Saga's command
+    async handleProcessPayment(data: any, eventId: string) {
         if (await this.isProcessed(eventId)) {
             console.log(`Event ${eventId} already processed — skipping`);
             return;
         }
 
-        console.log(`Processing STOCK_RESERVED for order ${event.orderId}`);
+        console.log(`Payment received PROCESS_PAYMENT command for order ${data.orderId}`);
 
         const paymentFailed = Math.random() < 0.1;
 
         if (paymentFailed) {
             await this.prisma.payment.create({
                 data: {
-                    orderId: event.orderId,
+                    orderId: data.orderId,
                     customerId: 'unknown',
                     amount: 0,
                     status: 'FAILED',
                 },
             });
 
-            await this.markProcessed(eventId, TOPICS.STOCK_RESERVED);
+            await this.markProcessed(eventId, TOPICS.PROCESS_PAYMENT);
 
+            // Report failure back to Saga — Saga decides what to do next
+            // Payment does NOT emit ORDER_FAILED — that's Saga's job
             await this.producer.send({
                 topic: TOPICS.PAYMENT_FAILED,
                 messages: [{
-                    key: event.orderId,
+                    key: data.orderId,
                     value: JSON.stringify({
-                        orderId: event.orderId,
+                        orderId: data.orderId,
                         reason: 'Payment declined by bank',
-                        eventId: `${event.orderId}-payment-failed`,
+                        eventId: `payment-failed-${data.orderId}`,
                     }),
                 }],
             });
 
-            await this.producer.send({
-                topic: TOPICS.ORDER_FAILED,
-                messages: [{
-                    key: event.orderId,
-                    value: JSON.stringify({
-                        orderId: event.orderId,
-                        reason: 'Payment declined by bank',
-                        eventId: `${event.orderId}-order-failed`,
-                    }),
-                }],
-            });
-
-            console.log(`Payment FAILED for order ${event.orderId}`);
+            console.log(`Payment FAILED for order ${data.orderId} — Saga will compensate`);
             return;
         }
 
         await this.prisma.payment.create({
             data: {
-                orderId: event.orderId,
+                orderId: data.orderId,
                 customerId: 'unknown',
                 amount: 0,
                 status: 'SUCCESS',
             },
         });
 
-        await this.markProcessed(eventId, TOPICS.STOCK_RESERVED);
+        await this.markProcessed(eventId, TOPICS.PROCESS_PAYMENT);
 
+        // Report success back to Saga — Saga confirms the order
         await this.producer.send({
             topic: TOPICS.PAYMENT_COMPLETED,
             messages: [{
-                key: event.orderId,
+                key: data.orderId,
                 value: JSON.stringify({
-                    orderId: event.orderId,
-                    eventId: `${event.orderId}-payment-completed`,
+                    orderId: data.orderId,
+                    eventId: `payment-completed-${data.orderId}`,
                 }),
             }],
         });
 
-        console.log(`Payment SUCCESS for order ${event.orderId} — emitting PAYMENT_COMPLETED`);
+        console.log(`Payment SUCCESS for order ${data.orderId} — emitting PAYMENT_COMPLETED`);
     }
 
     private async isProcessed(eventId: string): Promise<boolean> {
@@ -100,10 +92,9 @@ export class PaymentService implements OnModuleInit {
     }
 
     private async markProcessed(eventId: string, topic: string) {
-        await this.prisma.processedEvent.create({
-            data: { eventId, topic },
-        });
+        await this.prisma.processedEvent.create({ data: { eventId, topic } });
     }
+
     async getPayment(orderId: string) {
         return this.prisma.payment.findUnique({ where: { orderId } });
     }

@@ -18,22 +18,19 @@ export class OrderController {
         return this.orderService.getOrder(id);
     }
 
+    // Only Saga talks to Order Service now
+    // Removed PAYMENT_COMPLETED and PAYMENT_FAILED listeners
+    // Saga decides outcomes and emits ORDER_CONFIRMED / ORDER_FAILED
+
+    @EventPattern(TOPICS.ORDER_CONFIRMED)
+    handleOrderConfirmed(@Payload() data: any) {
+        const { orderId, eventId } = data;
+        return this.orderService.handleOrderConfirmed(orderId, eventId);
+    }
 
     @EventPattern(TOPICS.ORDER_FAILED)
     handleOrderFailed(@Payload() data: any) {
         const { orderId, reason, eventId } = data;
         return this.orderService.handleOrderFailed(orderId, reason, eventId);
-    }
-
-    @EventPattern(TOPICS.PAYMENT_COMPLETED)
-    handlePaymentCompleted(@Payload() data: any) {
-        const { orderId, eventId } = data;
-        return this.orderService.handlePaymentCompleted(orderId, eventId);
-    }
-
-    @EventPattern(TOPICS.PAYMENT_FAILED)
-    handlePaymentFailed(@Payload() data: any) {
-        const { orderId, reason, eventId } = data;
-        return this.orderService.handlePaymentFailed(orderId, reason, eventId);
     }
 }
