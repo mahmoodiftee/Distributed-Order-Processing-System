@@ -41,7 +41,7 @@ Orchestration = one conductor coordinates everyone (Phase 2)
 
 
 
-for pid in $(netstat -ano | grep -E ":3001|:3002|:3003" | grep LISTENING | awk '{print $5}' | sort -u); do taskkill //F //PID $pid; done
+for pid in $(netstat -ano | grep -E ":3001|:3002|:3003|:3004" | grep LISTENING | awk '{print $5}' | sort -u); do taskkill //F //PID $pid; done
 
 
 

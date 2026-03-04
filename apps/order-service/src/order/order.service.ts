@@ -63,6 +63,14 @@ export class OrderService implements OnModuleInit {
     async handleOrderFailed(orderId: string, reason: string, eventId: string) {
         if (await this.isProcessed(eventId)) return;
 
+        console.log(`Processing ORDER_FAILED for order ${orderId}`);
+        const order = await this.prisma.order.findUnique({ where: { id: orderId } });
+        if (!order) {
+            console.warn(`Order ${orderId} not found. Skipping status update.`);
+            await this.markProcessed(eventId, TOPICS.ORDER_FAILED);
+            return;
+        }
+
         await this.prisma.order.update({
             where: { id: orderId },
             data: { status: 'FAILED' },
@@ -75,6 +83,13 @@ export class OrderService implements OnModuleInit {
     async handlePaymentCompleted(orderId: string, eventId: string) {
         if (await this.isProcessed(eventId)) return;
 
+        const order = await this.prisma.order.findUnique({ where: { id: orderId } });
+        if (!order) {
+            console.warn(`Order ${orderId} not found. Skipping status update.`);
+            await this.markProcessed(eventId, TOPICS.PAYMENT_COMPLETED);
+            return;
+        }
+
         await this.prisma.order.update({
             where: { id: orderId },
             data: { status: 'CONFIRMED' },
@@ -86,6 +101,13 @@ export class OrderService implements OnModuleInit {
 
     async handlePaymentFailed(orderId: string, reason: string, eventId: string) {
         if (await this.isProcessed(eventId)) return;
+
+        const order = await this.prisma.order.findUnique({ where: { id: orderId } });
+        if (!order) {
+            console.warn(`Order ${orderId} not found. Skipping status update.`);
+            await this.markProcessed(eventId, TOPICS.PAYMENT_FAILED);
+            return;
+        }
 
         await this.prisma.order.update({
             where: { id: orderId },

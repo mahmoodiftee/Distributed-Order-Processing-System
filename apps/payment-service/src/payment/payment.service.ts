@@ -25,7 +25,7 @@ export class PaymentService implements OnModuleInit {
 
         console.log(`Processing STOCK_RESERVED for order ${event.orderId}`);
 
-        const paymentFailed = Math.random() < 0.5;
+        const paymentFailed = Math.random() < 0.1;
 
         if (paymentFailed) {
             await this.prisma.payment.create({
